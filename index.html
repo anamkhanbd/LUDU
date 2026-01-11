@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LUDU - Play Now</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    
+    <!-- React & ReactDOM (Development versions for better error messaging, use Production for deployment) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel Standalone for in-browser JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              ludo: {
+                red: '#ef4444',
+                green: '#22c55e',
+                yellow: '#eab308',
+                blue: '#3b82f6',
+                board: '#f8fafc',
+                darkBoard: '#1e293b'
+              }
+            },
+            gridTemplateColumns: {
+              '15': 'repeat(15, minmax(0, 1fr))',
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      /* Custom scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #f1f1f1; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #888; 
+        border-radius: 4px;
+      }
+      .dice-roll {
+        animation: roll 0.5s ease-in-out;
+      }
+      @keyframes roll {
+        0% { transform: rotate(0deg); }
+        25% { transform: rotate(90deg); }
+        50% { transform: rotate(180deg); }
+        75% { transform: rotate(270deg); }
+        100% { transform: rotate(360deg); }
+      }
+      @keyframes bounce-in {
+        0% { transform: scale(0.3); opacity: 0; }
+        50% { transform: scale(1.05); }
+        70% { transform: scale(0.9); }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      .animate-bounce-in {
+        animation: bounce-in 0.5s cubic-bezier(0.215, 0.610, 0.355, 1.000) both;
+      }
+      @keyframes fade-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-fade-in {
+        animation: fade-in 0.5s ease-out forwards;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+  }
+}
+</script>
+</head>
+  <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 transition-colors duration-300">
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState, useEffect, useRef } = React;
+
+      // ==================== TYPES (Enum Simulations) ====================
+      const PlayerColor = {
+        RED: 'RED',
+        GREEN: 'GREEN',
+        YELLOW: 'YELLOW',
+        BLUE: 'BLUE'
+      };
+
+      const PlayerType = {
+        HUMAN: 'HUMAN',
+        COMPUTER: 'COMPUTER',
+        NONE: 'NONE'
+      };
+
+      const GameMode = {
+        COMPUTER: 'COMPUTER',
+        TWO_PLAYER: 'TWO_PLAYER',
+        THREE_PLAYER: 'THREE_PLAYER',
+        FOUR_PLAYER: 'FOUR_PLAYER',
+        TEAM: 'TEAM'
+      };
+
+      // ==================== CONSTANTS ====================
+      const TRANSLATIONS = {
+        en: {
+          title: 'LUDU',
+          playGame: 'Play LUDU Game',
+          startGame: 'Start Game',
+          resume: 'Resume',
+          restart: 'Restart Game',
+          goHome: 'Go Home',
+          congratulations: 'Congratulations!',
+          won: 'has won the game!',
+          computer: 'Computer',
+          modeComputer: 'Play with Computer',
+          mode2: '2 Players',
+          mode3: '3 Players',
+          mode4: '4 Players',
+          modeTeam: 'Play with Team',
+          turn: "'s Turn",
+          roll: 'Roll Dice',
+          settings: 'Settings',
+          selectMode: 'Select Game Mode',
+        },
+        bn: {
+          title: 'লুডু',
+          playGame: 'লুডু খেলুন',
+          startGame: 'খেলা শুরু করুন',
+          resume: 'চালিয়ে যান',
+          restart: 'আবার শুরু করুন',
+          goHome: 'হোম এ যান',
+          congratulations: 'অভিনন্দন!',
+          won: 'খেলায় জিতেছে!',
+          computer: 'কম্পিউটার',
+          modeComputer: 'কম্পিউটারের সাথে খেলুন',
+          mode2: '২ জন খেলোয়াড়',
+          mode3: '৩ জন খেলোয়াড়',
+          mode4: '৪ জন খেলোয়াড়',
+          modeTeam: 'টিম নিয়ে খেলুন',
+          turn: "-এর পালা",
+          roll: 'ছক্কা চালুন',
+          settings: 'সেটিংস',
+          selectMode: 'গেম মোড নির্বাচন করুন',
+        }
+      };
+
+      const MAIN_PATH_COORDS = [
+        // RED Start Strip (Moving Right)
+        {x: 7, y: 2}, {x: 7, y: 3}, {x: 7, y: 4}, {x: 7, y: 5}, {x: 7, y: 6},
+        // Up towards Green
+        {x: 6, y: 7}, {x: 5, y: 7}, {x: 4, y: 7}, {x: 3, y: 7}, {x: 2, y: 7}, {x: 1, y: 7},
+        // Green Turn
+        {x: 1, y: 8}, {x: 1, y: 9},
+        // Down from Green
+        {x: 2, y: 9}, {x: 3, y: 9}, {x: 4, y: 9}, {x: 5, y: 9}, {x: 6, y: 9},
+        // Right towards Yellow
+        {x: 7, y: 10}, {x: 7, y: 11}, {x: 7, y: 12}, {x: 7, y: 13}, {x: 7, y: 14}, {x: 7, y: 15},
+        // Yellow Turn
+        {x: 8, y: 15}, {x: 9, y: 15},
+        // Left from Yellow
+        {x: 9, y: 14}, {x: 9, y: 13}, {x: 9, y: 12}, {x: 9, y: 11}, {x: 9, y: 10},
+        // Down towards Blue
+        {x: 10, y: 9}, {x: 11, y: 9}, {x: 12, y: 9}, {x: 13, y: 9}, {x: 14, y: 9}, {x: 15, y: 9},
+        // Blue Turn
+        {x: 15, y: 8}, {x: 15, y: 7},
+        // Up from Blue
+        {x: 14, y: 7}, {x: 13, y: 7}, {x: 12, y: 7}, {x: 11, y: 7}, {x: 10, y: 7},
+        // Left towards Red
+        {x: 9, y: 6}, {x: 9, y: 5}, {x: 9, y: 4}, {x: 9, y: 3}, {x: 9, y: 2}, {x: 9, y: 1},
+        // Red Turn
+        {x: 8, y: 1}, {x: 7, y: 1} // Index 51
+      ];
+
+      const START_INDICES = {
+        [PlayerColor.RED]: 0,
+        [PlayerColor.GREEN]: 13,
+        [PlayerColor.YELLOW]: 26,
+        [PlayerColor.BLUE]: 39
+      };
+
+      const SAFE_SPOTS = [0, 8, 13, 21, 26, 34, 39, 47];
+
+      // ==================== COMPONENTS ====================
+
+      // --- AdUnit ---
+      const AdUnit = ({ type, position, className }) => {
+        const adContainerRef = useRef(null);
+
+        useEffect(() => {
+          if (!adContainerRef.current) return;
+
+          adContainerRef.current.innerHTML = '';
+
+          const conf = type === 'banner' ? {
+            key: 'df0205346fcf9a2f6b30c76da816afb7',
+            height: 90,
+            width: 728
+          } : {
+            key: 'ae1946328ab916a004cf80eb603db8ed',
+            height: 600,
+            width: 160
+          };
+
+          const iframe = document.createElement('iframe');
+          iframe.width = conf.width.toString();
+          iframe.height = conf.height.toString();
+          iframe.style.border = 'none';
+          iframe.style.overflow = 'hidden';
+          iframe.scrolling = 'no';
+          
+          adContainerRef.current.appendChild(iframe);
+          
+          try {
+            const iframeDoc = iframe.contentWindow?.document || iframe.contentDocument;
+            if (iframeDoc) {
+              iframeDoc.open();
+              iframeDoc.write(`
+                <!DOCTYPE html>
+                <html>
+                  <body style="margin:0;padding:0;overflow:hidden;background-color:transparent;">
+                    <script type="text/javascript">
+                      atOptions = {
+                        'key': '${conf.key}',
+                        'format': 'iframe',
+                        'height': ${conf.height},
+                        'width': ${conf.width},
+                        'params': {}
+                      };
+                    <\/script>
+                    <script type="text/javascript" src="https://www.highperformanceformat.com/${conf.key}/invoke.js"><\/script>
+                  </body>
+                </html>
+              `);
+              iframeDoc.close();
+            }
+          } catch (e) {
+            console.error("Error injecting ad iframe:", e);
+          }
+        }, [type]);
+
+        return (
+          <div 
+            className={`ad-container flex justify-center items-center bg-gray-50 dark:bg-gray-800/50 ${className || ''}`}
+            ref={adContainerRef}
+            style={{
+               minHeight: type === 'banner' ? '90px' : '600px',
+               minWidth: type === 'banner' ? '300px' : '160px',
+               margin: '10px auto',
+               overflowX: 'auto',
+               maxWidth: '100%'
+            }}
+          >
+          </div>
+        );
+      };
+
+      // --- Dice ---
+      const Dice = ({ value, rolling, onRoll, color, disabled }) => {
+        const dotMap = {
+          1: [4],
+          2: [0, 8],
+          3: [0, 4, 8],
+          4: [0, 2, 6, 8],
+          5: [0, 2, 4, 6, 8],
+          6: [0, 2, 3, 5, 6, 8]
+        };
+
+        const getColorClass = (c) => {
+          switch(c) {
+            case PlayerColor.RED: return 'bg-red-500 shadow-red-700/50';
+            case PlayerColor.GREEN: return 'bg-green-500 shadow-green-700/50';
+            case PlayerColor.YELLOW: return 'bg-yellow-400 shadow-yellow-600/50';
+            case PlayerColor.BLUE: return 'bg-blue-500 shadow-blue-700/50';
+            default: return 'bg-gray-500';
+          }
+        };
+
+        return (
+          <div 
+            onClick={() => !disabled && !rolling && onRoll()}
+            className={`
+              w-16 h-16 rounded-xl cursor-pointer transition-all duration-200
+              grid grid-cols-3 grid-rows-3 gap-1 p-2 shadow-lg border-2 border-white/20
+              ${getColorClass(color)}
+              ${rolling ? 'dice-roll' : 'hover:scale-105'}
+              ${disabled ? 'opacity-50 cursor-not-allowed' : 'opacity-100'}
+            `}
+          >
+            {Array.from({ length: 9 }).map((_, i) => (
+              <div 
+                key={i} 
+                className={`rounded-full bg-white transition-opacity duration-100 ${dotMap[value].includes(i) ? 'opacity-100' : 'opacity-0'}`}
+              />
+            ))}
+          </div>
+        );
+      };
+
+      // --- LudoBoard ---
+      const LudoBoard = ({ players, onTokenClick, currentTurn, validMoves }) => {
+
+        const getStyle = (x, y) => ({
+          top: `${(x - 1) * (100 / 15)}%`,
+          left: `${(y - 1) * (100 / 15)}%`,
+          width: `${100 / 15}%`,
+          height: `${100 / 15}%`,
+        });
+
+        const getTokenPosition = (player, tokenIndex) => {
+          const token = player.tokens[tokenIndex];
+          
+          // YARD
+          if (token.position === -1) {
+            const offsetMap = [
+              { dx: 0, dy: 0 }, { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: 1, dy: 1 }
+            ];
+            const off = offsetMap[tokenIndex];
+            let baseX = 2.5, baseY = 2.5; // Red
+            if (player.color === PlayerColor.GREEN) { baseX = 2.5; baseY = 11.5; }
+            if (player.color === PlayerColor.YELLOW) { baseX = 11.5; baseY = 11.5; }
+            if (player.color === PlayerColor.BLUE) { baseX = 11.5; baseY = 2.5; }
+            return getStyle(baseX + off.dx * 1.5, baseY + off.dy * 1.5);
+          }
+
+          // HOME BASE
+          if (token.stepsMoved === 57) {
+             let hx = 8, hy = 8;
+             const offsets = [{x:-0.3, y:-0.3}, {x:0.3, y:-0.3}, {x:-0.3, y:0.3}, {x:0.3, y:0.3}];
+             return getStyle(hx + offsets[tokenIndex].x, hy + offsets[tokenIndex].y);
+          }
+
+          // HOME PATH
+          if (token.stepsMoved > 50) {
+             const stepsIn = token.stepsMoved - 51; // 1-5
+             let hx = 0, hy = 0;
+             if (player.color === PlayerColor.RED) { hx = 7; hy = 1 + stepsIn; }
+             if (player.color === PlayerColor.GREEN) { hx = 1 + stepsIn; hy = 8; }
+             if (player.color === PlayerColor.YELLOW) { hx = 9; hy = 15 - stepsIn; }
+             if (player.color === PlayerColor.BLUE) { hx = 15 - stepsIn; hy = 8; }
+             return getStyle(hx, hy);
+          }
+
+          // MAIN PATH
+          const globalIdx = (START_INDICES[player.color] + token.position) % 52;
+          const coord = MAIN_PATH_COORDS[globalIdx];
+          return getStyle(coord.x, coord.y);
+        };
+
+        const renderBoardBackground = () => {
+          const cells = [];
+          for(let r=1; r<=15; r++) {
+            for(let c=1; c<=15; c++) {
+              if ((r<=6 && c<=6) || (r<=6 && c>=10) || (r>=10 && c<=6) || (r>=10 && c>=10) || (r>=7 && r<=9 && c>=7 && c<=9)) {
+                continue;
+              }
+
+              let bgClass = "bg-white dark:bg-slate-700 border-[0.5px] border-gray-400";
+              let content = null;
+
+              if (r===8 && c>1 && c<7) bgClass = "bg-ludo-red";
+              if (c===8 && r>1 && r<7) bgClass = "bg-ludo-green";
+              if (r===8 && c>9 && c<14) bgClass = "bg-ludo-yellow";
+              if (c===8 && r>9 && r<14) bgClass = "bg-ludo-blue";
+
+              if (r===7 && c===2) { bgClass = "bg-ludo-red"; content = <i className="fa-solid fa-arrow-right text-white text-[10px] md:text-sm"></i>; }
+              if (r===2 && c===9) { bgClass = "bg-ludo-green"; content = <i className="fa-solid fa-arrow-down text-white text-[10px] md:text-sm"></i>; }
+              if (r===9 && c===14) { bgClass = "bg-ludo-yellow"; content = <i className="fa-solid fa-arrow-left text-white text-[10px] md:text-sm"></i>; }
+              if (r===14 && c===7) { bgClass = "bg-ludo-blue"; content = <i className="fa-solid fa-arrow-up text-white text-[10px] md:text-sm"></i>; }
+
+              const pIdx = MAIN_PATH_COORDS.findIndex(p => p.x === r && p.y === c);
+              if (pIdx !== -1 && SAFE_SPOTS.includes(pIdx)) {
+                 if (!bgClass.includes('bg-ludo')) {
+                    bgClass = "bg-gray-200 dark:bg-slate-600";
+                    content = <i className="fa-regular fa-star text-gray-400"></i>;
+                 }
+              }
+
+              cells.push(
+                <div key={`bg-${r}-${c}`} className={`absolute flex items-center justify-center ${bgClass}`} style={getStyle(r, c)}>
+                  {content}
+                </div>
+              );
+            }
+          }
+          return cells;
+        };
+
+        return (
+          <div className="w-full max-w-[600px] aspect-square bg-white dark:bg-slate-800 shadow-2xl rounded-sm relative select-none">
+            
+            {/* Yards */}
+            <div className="absolute top-0 left-0 w-[40%] h-[40%] bg-ludo-red p-[10%] border border-gray-400">
+              <div className="w-full h-full bg-white rounded-xl shadow-inner"></div>
+            </div>
+            <div className="absolute top-0 right-0 w-[40%] h-[40%] bg-ludo-green p-[10%] border border-gray-400">
+              <div className="w-full h-full bg-white rounded-xl shadow-inner"></div>
+            </div>
+            <div className="absolute bottom-0 right-0 w-[40%] h-[40%] bg-ludo-yellow p-[10%] border border-gray-400">
+               <div className="w-full h-full bg-white rounded-xl shadow-inner"></div>
+            </div>
+            <div className="absolute bottom-0 left-0 w-[40%] h-[40%] bg-ludo-blue p-[10%] border border-gray-400">
+              <div className="w-full h-full bg-white rounded-xl shadow-inner"></div>
+            </div>
+
+            {/* Path Grid */}
+            {renderBoardBackground()}
+
+            {/* Center Home */}
+            <div className="absolute top-[40%] left-[40%] w-[20%] h-[20%]">
+                <div className="absolute w-full h-full overflow-hidden bg-white">
+                   <div className="absolute top-0 left-0 w-full h-full bg-ludo-red" style={{clipPath: 'polygon(0 0, 0 100%, 50% 50%)'}}></div>
+                   <div className="absolute top-0 left-0 w-full h-full bg-ludo-green" style={{clipPath: 'polygon(0 0, 100% 0, 50% 50%)'}}></div>
+                   <div className="absolute top-0 left-0 w-full h-full bg-ludo-yellow" style={{clipPath: 'polygon(100% 0, 100% 100%, 50% 50%)'}}></div>
+                   <div className="absolute top-0 left-0 w-full h-full bg-ludo-blue" style={{clipPath: 'polygon(0 100%, 100% 100%, 50% 50%)'}}></div>
+                </div>
+            </div>
+
+            {/* Tokens Layer */}
+            {players.map((player, pIdx) => {
+              if (player.type === PlayerType.NONE) return null;
+              return player.tokens.map((token, tIdx) => {
+                const style = getTokenPosition(player, tIdx);
+                const isPlayable = currentTurn === pIdx && validMoves.includes(token.id);
+                const isLocalPlayer = player.type === PlayerType.HUMAN;
+                
+                let tokenColor = '';
+                switch(player.color) {
+                  case PlayerColor.RED: tokenColor = 'text-red-600 drop-shadow-sm shadow-red-900'; break;
+                  case PlayerColor.GREEN: tokenColor = 'text-green-600 drop-shadow-sm shadow-green-900'; break;
+                  case PlayerColor.YELLOW: tokenColor = 'text-yellow-500 drop-shadow-sm shadow-yellow-900'; break;
+                  case PlayerColor.BLUE: tokenColor = 'text-blue-600 drop-shadow-sm shadow-blue-900'; break;
+                }
+
+                return (
+                   <div
+                     key={`${pIdx}-${tIdx}`}
+                     className={`absolute flex items-center justify-center transition-all duration-500 ease-in-out z-20
+                        ${isPlayable && isLocalPlayer ? 'cursor-pointer animate-bounce z-30' : ''}
+                     `}
+                     style={{...style}}
+                     onClick={() => {
+                       if(isPlayable && isLocalPlayer) {
+                          onTokenClick(pIdx, tIdx);
+                       }
+                     }}
+                   >
+                      <i 
+                         className={`fa-solid fa-location-dot text-2xl md:text-3xl ${tokenColor} stroke-white stroke-2`}
+                         style={{
+                           filter: 'drop-shadow(0px 2px 2px rgba(0,0,0,0.5))',
+                           stroke: 'white',
+                           strokeWidth: '1px'
+                         }}
+                      ></i>
+                      <div className="absolute top-[30%] w-[30%] h-[30%] bg-white rounded-full pointer-events-none"></div>
+                   </div>
+                );
+              });
+            })}
+
+          </div>
+        );
+      };
+
+      // ==================== APP ====================
+      const App = () => {
+        const [lang, setLang] = useState('en');
+        const [theme, setTheme] = useState('light');
+        const [view, setView] = useState('home');
+        const [showModal, setShowModal] = useState(false);
+
+        const [players, setPlayers] = useState([]);
+        const [currentTurn, setCurrentTurn] = useState(0);
+        const [diceValue, setDiceValue] = useState(1);
+        const [isRolling, setIsRolling] = useState(false);
+        const [waitingForMove, setWaitingForMove] = useState(false);
+        const [winner, setWinner] = useState(null);
+
+        const playersRef = useRef(players);
+        const turnRef = useRef(currentTurn);
+
+        useEffect(() => {
+          playersRef.current = players;
+        }, [players]);
+
+        useEffect(() => {
+          turnRef.current = currentTurn;
+        }, [currentTurn]);
+
+        useEffect(() => {
+          if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            setTheme('dark');
+          }
+        }, []);
+
+        useEffect(() => {
+          if (theme === 'dark') document.documentElement.classList.add('dark');
+          else document.documentElement.classList.remove('dark');
+        }, [theme]);
+
+        const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
+        const toggleLang = () => setLang(prev => prev === 'en' ? 'bn' : 'en');
+        const t = TRANSLATIONS[lang];
+
+        const createPlayer = (color, name, type) => ({
+          color,
+          name,
+          type,
+          hasFinished: false,
+          tokens: [0, 1, 2, 3].map(id => ({ id, color, position: -1, isSafe: true, stepsMoved: 0 }))
+        });
+
+        const startGame = (mode) => {
+          const newPlayers = [
+              createPlayer(PlayerColor.RED, 'Player 1', PlayerType.HUMAN),
+              createPlayer(PlayerColor.GREEN, 'Player 2', PlayerType.HUMAN),
+              createPlayer(PlayerColor.YELLOW, 'Player 3', PlayerType.HUMAN),
+              createPlayer(PlayerColor.BLUE, 'Player 4', PlayerType.HUMAN)
+          ];
+
+          if (mode === GameMode.COMPUTER) {
+              newPlayers[0].name = 'You';
+              newPlayers[1] = createPlayer(PlayerColor.GREEN, 'CPU Green', PlayerType.COMPUTER);
+              newPlayers[2] = createPlayer(PlayerColor.YELLOW, 'CPU Yellow', PlayerType.COMPUTER);
+              newPlayers[3] = createPlayer(PlayerColor.BLUE, 'CPU Blue', PlayerType.COMPUTER);
+          } 
+          else if (mode === GameMode.TWO_PLAYER) {
+              newPlayers[1] = createPlayer(PlayerColor.GREEN, '-', PlayerType.NONE);
+              newPlayers[3] = createPlayer(PlayerColor.BLUE, '-', PlayerType.NONE);
+          }
+
+          setPlayers(newPlayers);
+          setCurrentTurn(0);
+          setDiceValue(1);
+          setWaitingForMove(false);
+          setWinner(null);
+          setView('game');
+          setShowModal(false);
+        };
+
+        useEffect(() => {
+          if (view !== 'game' || winner) return;
+
+          const currentPlayer = players[currentTurn];
+          if (currentPlayer && currentPlayer.type === PlayerType.COMPUTER && !isRolling && !waitingForMove) {
+              const timer = setTimeout(() => {
+                  handleRollDice();
+              }, 1000);
+              return () => clearTimeout(timer);
+          }
+        }, [currentTurn, players, view, winner, isRolling, waitingForMove]);
+
+        useEffect(() => {
+          if (view !== 'game' || winner) return;
+          const currentPlayer = players[currentTurn];
+          
+          if (currentPlayer && currentPlayer.type === PlayerType.COMPUTER && waitingForMove && !isRolling) {
+             const moves = getValidMoves(currentPlayer, diceValue);
+             
+             const timer = setTimeout(() => {
+                if (moves.length > 0) {
+                    const randomId = moves[Math.floor(Math.random() * moves.length)];
+                    const tIdx = currentPlayer.tokens.findIndex(t => t.id === randomId);
+                    moveToken(currentTurn, tIdx, diceValue);
+                } else {
+                    passTurn();
+                }
+             }, 1000);
+             return () => clearTimeout(timer);
+          }
+        }, [waitingForMove, isRolling, currentTurn, diceValue]);
+
+        const handleRollDice = () => {
+          if (isRolling || waitingForMove) return;
+
+          setIsRolling(true);
+          setTimeout(() => {
+            const roll = Math.floor(Math.random() * 6) + 1;
+            setDiceValue(roll);
+            setIsRolling(false);
+            
+            const currentPlayer = playersRef.current[turnRef.current];
+            const moves = getValidMoves(currentPlayer, roll);
+
+            if (moves.length === 0) {
+               setTimeout(() => passTurn(), 500);
+            } else {
+               setWaitingForMove(true);
+            }
+          }, 500);
+        };
+
+        const getValidMoves = (player, roll) => {
+          if (player.type === PlayerType.NONE) return [];
+          return player.tokens
+            .filter(t => {
+              if (t.position === -1) return roll === 6;
+              if (t.stepsMoved === 57) return false;
+              if (t.stepsMoved + roll > 57) return false;
+              return true;
+            })
+            .map(t => t.id);
+        };
+
+        const moveToken = (pIdx, tIdx, roll) => {
+           if (pIdx !== turnRef.current) return;
+           
+           const newPlayers = [...players];
+           const player = newPlayers[pIdx];
+           const token = player.tokens[tIdx];
+           
+           let newToken = { ...token };
+           
+           if (newToken.position === -1) {
+               newToken.position = 0;
+               newToken.stepsMoved = 0;
+               newToken.isSafe = true;
+           } else {
+               newToken.stepsMoved += roll;
+               newToken.position = (newToken.position + roll) % 52;
+               const globalPos = (START_INDICES[newToken.color] + newToken.position) % 52;
+               newToken.isSafe = SAFE_SPOTS.includes(globalPos) || newToken.stepsMoved > 50;
+           }
+           
+           let hasKilled = false;
+           if (!newToken.isSafe && newToken.stepsMoved <= 50) {
+               const globalPos = (START_INDICES[newToken.color] + newToken.position) % 52;
+               
+               newPlayers.forEach((opp, oppIdx) => {
+                   if (oppIdx === pIdx || opp.type === PlayerType.NONE) return;
+                   opp.tokens.forEach((oppToken, oppTIdx) => {
+                       if (oppToken.position !== -1 && oppToken.stepsMoved <= 50) {
+                           const oppGlobal = (START_INDICES[opp.color] + oppToken.position) % 52;
+                           if (globalPos === oppGlobal && !SAFE_SPOTS.includes(oppGlobal)) {
+                               newPlayers[oppIdx].tokens[oppTIdx] = {
+                                   ...oppToken,
+                                   position: -1,
+                                   stepsMoved: 0,
+                                   isSafe: true
+                               };
+                               hasKilled = true;
+                           }
+                       }
+                   });
+               });
+           }
+
+           newPlayers[pIdx].tokens[tIdx] = newToken;
+           setPlayers(newPlayers);
+           setWaitingForMove(false);
+
+           if (newToken.stepsMoved === 57 && newPlayers[pIdx].tokens.every(t => t.stepsMoved === 57)) {
+               setWinner(newPlayers[pIdx]);
+               setView('win');
+               return;
+           }
+
+           if (roll === 6 || hasKilled || newToken.stepsMoved === 57) {
+               // Bonus turn logic handled by effects or next user interaction
+           } else {
+               passTurn();
+           }
+        };
+
+        const passTurn = () => {
+          let next = (currentTurn + 1) % 4;
+          while (players[next].type === PlayerType.NONE) {
+              next = (next + 1) % 4;
+          }
+          setCurrentTurn(next);
+          setDiceValue(1);
+          setWaitingForMove(false);
+        };
+
+        return (
+          <div className="min-h-screen flex flex-col font-sans">
+            <header className="bg-white dark:bg-gray-800 shadow-md p-3 sticky top-0 z-40 flex justify-between items-center">
+              <div className="flex items-center gap-2" onClick={() => setView('home')}>
+                 <i className="fa-solid fa-dice text-3xl text-ludo-red cursor-pointer"></i>
+                 <h1 className="text-xl font-bold hidden sm:block bg-clip-text text-transparent bg-gradient-to-r from-red-500 to-blue-500">{t.title}</h1>
+              </div>
+              <div className="flex gap-3">
+                 <button onClick={toggleLang} className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center hover:bg-gray-200 transition-colors">
+                    <span className="font-bold text-sm">{lang === 'en' ? 'BN' : 'EN'}</span>
+                 </button>
+                 <button onClick={toggleTheme} className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center hover:bg-gray-200 transition-colors">
+                    <i className={`fa-solid ${theme === 'light' ? 'fa-moon' : 'fa-sun text-yellow-400'}`}></i>
+                 </button>
+              </div>
+            </header>
+
+            <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+                
+                <div className="hidden lg:block w-[180px] bg-gray-50 dark:bg-black/20 shrink-0">
+                   <AdUnit type="sidebar" position="left" />
+                </div>
+
+                <main className="flex-1 overflow-y-auto flex flex-col items-center p-2 md:p-4">
+                   
+                   <div className="block lg:hidden w-full mb-2 overflow-x-auto">
+                      <div className="min-w-[728px] flex justify-center transform scale-50 origin-top-left md:scale-75 md:origin-top sm:scale-100 sm:origin-center">
+                         <AdUnit type="banner" position="top" />
+                      </div>
+                   </div>
+
+                   <div className="hidden lg:block w-full mb-4 max-w-[728px]">
+                      <AdUnit type="banner" position="top" />
+                   </div>
+
+                   {view === 'home' && (
+                     <div className="flex flex-col items-center justify-center flex-1 w-full max-w-md animate-fade-in text-center">
+                        <div className="mb-8 relative">
+                           <div className="absolute inset-0 bg-blue-500 blur-3xl opacity-20 rounded-full"></div>
+                           <i className="fa-solid fa-chess-board text-9xl text-gray-700 dark:text-gray-200 relative drop-shadow-2xl"></i>
+                        </div>
+                        <h2 className="text-3xl font-extrabold mb-8">{t.playGame}</h2>
+                        <button 
+                          onClick={() => setShowModal(true)}
+                          className="w-full py-4 px-8 bg-gradient-to-r from-ludo-red to-orange-500 text-white text-xl font-bold rounded-2xl shadow-xl hover:shadow-2xl hover:scale-105 transition-all flex items-center justify-center gap-3"
+                        >
+                          <i className="fa-solid fa-play"></i> {t.startGame}
+                        </button>
+                     </div>
+                   )}
+
+                   {view === 'game' && (
+                      <div className="w-full flex flex-col items-center">
+                         
+                         <div className="w-full max-w-[600px] flex justify-between items-center mb-4 bg-white dark:bg-gray-800 p-3 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                            <div className="flex items-center gap-3">
+                               <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white shadow-lg
+                                  ${players[currentTurn]?.color === PlayerColor.RED ? 'bg-ludo-red' :
+                                    players[currentTurn]?.color === PlayerColor.GREEN ? 'bg-ludo-green' :
+                                    players[currentTurn]?.color === PlayerColor.YELLOW ? 'bg-ludo-yellow' : 'bg-ludo-blue'}
+                               `}>
+                                  <i className={`fa-solid ${players[currentTurn]?.type === PlayerType.COMPUTER ? 'fa-robot' : 'fa-user'}`}></i>
+                               </div>
+                               <div className="flex flex-col">
+                                  <span className="font-bold text-sm md:text-base">{players[currentTurn]?.name}</span>
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">{t.turn}</span>
+                               </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-4">
+                                {isRolling && <span className="text-sm font-semibold animate-pulse text-blue-500">Rolling...</span>}
+                                <Dice 
+                                  value={diceValue} 
+                                  rolling={isRolling} 
+                                  onRoll={handleRollDice} 
+                                  color={players[currentTurn]?.color}
+                                  disabled={waitingForMove || players[currentTurn]?.type === PlayerType.COMPUTER}
+                                />
+                            </div>
+                         </div>
+
+                         <LudoBoard 
+                            players={players} 
+                            currentTurn={currentTurn} 
+                            onTokenClick={(p, t) => moveToken(p, t, diceValue)}
+                            validMoves={!isRolling && waitingForMove ? getValidMoves(players[currentTurn], diceValue) : []}
+                         />
+
+                         <div className="mt-6 flex gap-4">
+                             <button onClick={() => setView('home')} className="px-5 py-2.5 bg-gray-200 dark:bg-gray-700 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-red-100 hover:text-red-600 font-semibold transition-colors flex items-center gap-2">
+                                <i className="fa-solid fa-right-from-bracket"></i> Quit
+                             </button>
+                         </div>
+                      </div>
+                   )}
+
+                   <div className="block lg:hidden w-full mt-4 overflow-hidden">
+                       <div className="w-[728px] transform origin-top-left scale-[0.45] sm:scale-75 mx-auto">
+                          <AdUnit type="banner" position="bottom" />
+                       </div>
+                   </div>
+
+                    <div className="hidden lg:block w-full mt-auto max-w-[728px]">
+                      <AdUnit type="banner" position="bottom" />
+                   </div>
+
+                </main>
+
+                <div className="hidden lg:block w-[180px] bg-gray-50 dark:bg-black/20 shrink-0 border-l dark:border-gray-700">
+                   <AdUnit type="sidebar" position="right" />
+                </div>
+
+            </div>
+
+            {showModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+                  <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl p-6 max-w-sm w-full border border-gray-100 dark:border-gray-700">
+                      <div className="flex justify-between items-center mb-6">
+                          <h2 className="text-xl font-bold">{t.selectMode}</h2>
+                          <button onClick={() => setShowModal(false)} className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center hover:bg-red-100 hover:text-red-500 transition-colors">
+                              <i className="fa-solid fa-xmark"></i>
+                          </button>
+                      </div>
+                      
+                      <div className="grid gap-3">
+                          <button onClick={() => startGame(GameMode.COMPUTER)} className="p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-800 transition-all flex items-center gap-4 group">
+                              <div className="w-12 h-12 rounded-full bg-blue-500 text-white flex items-center justify-center text-xl shadow-lg group-hover:scale-110 transition-transform">
+                                  <i className="fa-solid fa-robot"></i>
+                              </div>
+                              <div className="text-left">
+                                  <div className="font-bold text-gray-800 dark:text-gray-100">{t.computer}</div>
+                                  <div className="text-xs text-gray-500">1 Player vs 3 CPU</div>
+                              </div>
+                          </button>
+
+                          <button onClick={() => startGame(GameMode.TWO_PLAYER)} className="p-4 rounded-xl bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 border border-green-200 dark:border-green-800 transition-all flex items-center gap-4 group">
+                              <div className="w-12 h-12 rounded-full bg-green-500 text-white flex items-center justify-center text-xl shadow-lg group-hover:scale-110 transition-transform">
+                                  <i className="fa-solid fa-user-group"></i>
+                              </div>
+                              <div className="text-left">
+                                  <div className="font-bold text-gray-800 dark:text-gray-100">{t.mode2}</div>
+                                  <div className="text-xs text-gray-500">1 vs 1 (Red & Yellow)</div>
+                              </div>
+                          </button>
+
+                          <button onClick={() => startGame(GameMode.FOUR_PLAYER)} className="p-4 rounded-xl bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 border border-purple-200 dark:border-purple-800 transition-all flex items-center gap-4 group">
+                              <div className="w-12 h-12 rounded-full bg-purple-500 text-white flex items-center justify-center text-xl shadow-lg group-hover:scale-110 transition-transform">
+                                  <i className="fa-solid fa-users"></i>
+                              </div>
+                              <div className="text-left">
+                                  <div className="font-bold text-gray-800 dark:text-gray-100">{t.mode4}</div>
+                                  <div className="text-xs text-gray-500">4 Players Local</div>
+                              </div>
+                          </button>
+                      </div>
+                  </div>
+              </div>
+            )}
+
+            {view === 'win' && (
+              <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center text-white p-4 animate-fade-in">
+                  <div className="relative mb-6">
+                      <i className="fa-solid fa-crown text-7xl text-yellow-400 animate-bounce drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]"></i>
+                      <div className="absolute -top-4 -right-4 text-4xl animate-pulse">✨</div>
+                      <div className="absolute -bottom-4 -left-4 text-4xl animate-pulse delay-75">✨</div>
+                  </div>
+                  
+                  <h1 className="text-5xl font-extrabold mb-4 text-center tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 to-yellow-600">{t.congratulations}</h1>
+                  <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 mb-8 text-center border border-white/10 shadow-2xl">
+                      <p className="text-2xl"><span className={`font-bold ${
+                          winner?.color === PlayerColor.RED ? 'text-red-400' :
+                          winner?.color === PlayerColor.GREEN ? 'text-green-400' :
+                          winner?.color === PlayerColor.YELLOW ? 'text-yellow-400' : 'text-blue-400'
+                      }`}>{winner?.name}</span></p>
+                      <p className="text-gray-300 mt-2">{t.won}</p>
+                  </div>
+                  
+                  <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
+                      <button 
+                          onClick={() => startGame(GameMode.COMPUTER)}
+                          className="flex-1 px-6 py-4 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl font-bold shadow-lg hover:shadow-green-500/20 hover:scale-105 transition-all flex items-center justify-center gap-2"
+                      >
+                          <i className="fa-solid fa-rotate-right"></i> {t.restart}
+                      </button>
+                      <button 
+                          onClick={() => setView('home')}
+                          className="flex-1 px-6 py-4 bg-white/10 hover:bg-white/20 rounded-xl font-bold backdrop-blur-sm border border-white/10 hover:scale-105 transition-all flex items-center justify-center gap-2"
+                      >
+                          <i className="fa-solid fa-house"></i> {t.goHome}
+                      </button>
+                  </div>
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      // ==================== RENDER ====================
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>
